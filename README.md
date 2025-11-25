@@ -6,9 +6,9 @@ This is the official implementation of our paper "A Fair Ranking and New Model f
 
 ### Environment
 
-Install the [Poetry](https://python-poetry.org/docs/#installing-with-the-official-installer) package manager. In the folder that contains this README, run `poetry install`.
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/). In the folder that contains this README, run `uv sync`, then activate the environment using `source .venv/bin/activate`.
 
-Alternatively, you can use pip to install the different packages manually. However, using Poetry is recommended.
+Alternatively, you can use pip to install the different packages listed in the `pyproject.toml` file manually. However, using uv makes things a lot easier!
 
 ### Data
 
@@ -25,10 +25,7 @@ Each of the listed scripts in this section have a `--help` option for more infor
 To train a model, use the following code:
 
 ``` sh
-# first, activate the environment (if not done)
-poetry shell
-# then, run the training command
-fair-psgg \
+python -m fair_psgg \
     --anno /path/to/openpsg/psg/psg.json \
     --img /path/to/openpsg/coco \
     --seg /path/to/openpsg/coco \
@@ -46,7 +43,6 @@ The provided config files are grouped by the supplementary tables.
 Run the following to produce an output file using a trained DSFormer model:
 
 ``` sh
-poetry shell
 python -m fair_psgg.tasks.inference \
     /path/to/openpsg/psg/psg.json \
     /path/to/openpsg/coco \
