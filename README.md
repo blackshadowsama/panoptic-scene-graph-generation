@@ -34,7 +34,7 @@ python -m fair_psgg \
     /output/path/masks-loc-sem
 ```
 
-For more information, run `fair-psgg --help`.
+For more information, run `python -m fair_psgg --help`.
 
 The provided config files are grouped by the supplementary tables.
 
