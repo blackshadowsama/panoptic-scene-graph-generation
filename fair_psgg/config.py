@@ -111,6 +111,30 @@ class Config(BaseModel):
         with open(path, "w") as f:
             json.dump(content, f, indent=2)
 
+    def with_overrides(self, overrides: dict):
+        curdict = self.model_dump()
+
+        for key, value in overrides.items():
+            keys = key.split(".")
+            cur = curdict
+            for k in keys[:-1]:
+                cur = cur[k]
+            if keys[-1] not in cur:
+                raise RuntimeError(f"Unknown config key: {key}")
+            cur[keys[-1]] = value
+
+        return Config.model_validate(curdict, strict=False)
+
+    def with_cli_overrides(self, overrides: Sequence[str]):
+        """Override some config keys via CLI arguments.
+        :param overrides: Sequence of CLI overrides, represented as a string "key=value"
+        """
+        overrides_dict = {}
+        for c in overrides:
+            k, v = c.split("=")
+            overrides_dict[k] = v
+        return self.with_overrides(overrides_dict)
+
 
 def _write_schema():
     from argparse import ArgumentParser

@@ -1,6 +1,5 @@
 from argparse import ArgumentParser
 import json
-from project_paths import project_paths
 import torch
 from .config import Config
 from .trainer import Trainer
@@ -14,38 +13,36 @@ def cli():
         "output",
         help="Path to output folder. Note that all contents inside that folder will be overwritten",
     )
-    parser.add_argument("--anno", default=None, help="Path to PSG JSON annotation file")
-    parser.add_argument("--img", default=None, help="Directory that contains images")
     parser.add_argument(
-        "--seg", default=None, help="Directory that contains segmentation masks"
+        "--anno", required=True, help="Path to PSG JSON annotation file"
+    )
+    parser.add_argument("--img", required=True, help="Directory that contains images")
+    parser.add_argument(
+        "--seg", required=True, help="Directory that contains segmentation masks"
     )
     parser.add_argument(
         "--epochs", default=40, type=int, help="Number of training epochs"
     )
     parser.add_argument(
-        "--workers", default=12, type=int, help="Number of workers for the data loaders"
+        "--workers", default=4, type=int, help="Number of workers for the data loaders"
     )
     parser.add_argument("--model-state", default=None)
     parser.add_argument("--no-bpbar", default=False, action="store_true")
+    parser.add_argument(
+        "--cfg",
+        nargs="+",
+        help="""Overrides for the config file. Must be specified as key=value pairs.
+You can list multiple entries like --cfg architecture.transformer_depth=3 data.source=psg""",
+    )
     args = parser.parse_args()
 
-    if args.anno is None:
-        anno_path = project_paths.psg_annotation_dir
-        print("Anno Path:", anno_path)
-    else:
-        anno_path = args.anno
-    if args.img is None:
-        img_dir = project_paths.psg_img_dir
-        print("Img Dir:", img_dir)
-    else:
-        img_dir = args.img
-    if args.seg is None:
-        seg_dir = project_paths.psg_seg_dir
-        print("Seg Dir:", seg_dir)
-    else:
-        seg_dir = args.seg
+    anno_path = args.anno
+    img_dir = args.img
+    seg_dir = args.seg
 
     config = Config.from_file(args.config)
+    if args.cfg:
+        config = config.with_cli_overrides(args.cfg)
 
     if args.model_state is None:
         model_state_dict = None
