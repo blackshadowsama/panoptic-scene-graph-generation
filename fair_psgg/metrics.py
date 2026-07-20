@@ -37,8 +37,13 @@ def mean_recall_k(
     gt_counts, hit_counts = _recall_k_counts(
         k=k, gt_list=gt_list, output_list=output_list
     )
-    per_class_recall = hit_counts / gt_counts
-    assert not torch.isnan(per_class_recall).any(), per_class_recall
+    supported = gt_counts > 0
+    if not supported.any():
+        return 0.0
+    per_class_recall = (
+        hit_counts[supported].float()
+        / gt_counts[supported].float()
+    )
     return per_class_recall.mean().item()
 
 
@@ -89,14 +94,29 @@ def mean_nogc_recall_k(
     gt_counts, hit_counts = _nogc_recall_k_counts(
         k=k, gt_list=gt_list, output_list=output_list
     )
-    per_class_recall = hit_counts / gt_counts
-    assert not torch.isnan(per_class_recall).any(), per_class_recall
+    supported = gt_counts > 0
+    if not supported.any():
+        return 0.0
+    per_class_recall = (
+        hit_counts[supported].float()
+        / gt_counts[supported].float()
+    )
     return per_class_recall.mean().item()
 
 
 def _per_class(gts: torch.Tensor, hits: torch.Tensor):
-    per_class = hits / gts
-    assert not torch.isnan(per_class).any(), per_class
+    # 无 GT 支持的类别记为 NaN；聚合指标使用 nanmean 忽略它们。
+    per_class = torch.full(
+        gts.shape,
+        float("nan"),
+        dtype=torch.float32,
+        device=gts.device,
+    )
+    supported = gts > 0
+    per_class[supported] = (
+        hits[supported].float()
+        / gts[supported].float()
+    )
     return per_class
 
 
@@ -118,12 +138,12 @@ def build_rel_metrics_dict(
     metrics = {
         "rel_recall/20": r20_o.sum() / r20_g.sum(),
         "rel_recall/50": r50_o.sum() / r50_g.sum(),
-        "rel_mean_recall/20": recall20_classes.mean(),
-        "rel_mean_recall/50": recall50_classes.mean(),
+        "rel_mean_recall/20": torch.nanmean(recall20_classes),
+        "rel_mean_recall/50": torch.nanmean(recall50_classes),
         "rel_nogc_recall/20": n20_o.sum() / n20_g.sum(),
         "rel_nogc_recall/50": n50_o.sum() / n50_g.sum(),
-        "rel_mean_nogc_recall/20": nogc20_classes.mean(),
-        "rel_mean_nogc_recall/50": nogc50_classes.mean(),
+        "rel_mean_nogc_recall/20": torch.nanmean(nogc20_classes),
+        "rel_mean_nogc_recall/50": torch.nanmean(nogc50_classes),
     }
 
     for name, v in zip(rel_names, recall50_classes):

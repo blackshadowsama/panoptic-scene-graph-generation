@@ -236,6 +236,7 @@ def calc_single(
     match="mask",
     dedup_mode="first",
     is_ours=True,
+    num_rel=56,
 ):
     assert dedup_mode in ("none", "first", "max", "ng", "fail")
     if match == "box":
@@ -281,7 +282,7 @@ def calc_single(
     matched_gt_boxes = set(matching.values())
 
     gt_rels = defaultdict(list)
-    gt_count = np.zeros(56, dtype=int)
+    gt_count = np.zeros(num_rel, dtype=int)
     required_gt_boxes = set()
     for sbj, obj, rel in gt["relations"]:
         gt_rels[(sbj, obj)].append(rel)
@@ -327,7 +328,7 @@ def calc_single(
         scores = item["rel_scores"][sel]
 
         # calculate normal recall hits
-        hit_count = np.zeros(56, dtype=int)
+        hit_count = np.zeros(num_rel, dtype=int)
         for (sbj, obj), rel_pred in zip(pairs, scores[:, 1:].argmax(-1)):
             if sbj not in matching or obj not in matching:
                 continue
@@ -340,7 +341,7 @@ def calc_single(
                         hit_count[g_rel] += 1
 
         # calculate nogc recall hits
-        nogc_hit_count = np.zeros(56, dtype=int)
+        nogc_hit_count = np.zeros(num_rel, dtype=int)
         if is_ours:
             fg_score = (1 - item["rel_scores"][:, 0])[:, None]
             ngc_scores = item["rel_scores"][:, 1:] * fg_score
@@ -348,10 +349,10 @@ def calc_single(
             # just use the scores directly for nogc metrics
             ngc_scores = item["rel_scores"][:, 1:]
         ordering = ngc_scores.flatten().argsort()[-k:]
-        pair_ids = np.tile(np.arange(len(item["pairs"]))[:, None], (1, 56)).flatten()[
+        pair_ids = np.tile(np.arange(len(item["pairs"]))[:, None], (1, num_rel)).flatten()[
             ordering
         ]
-        pred_ids = np.tile(np.arange(56), len(item["rel_scores"]))
+        pred_ids = np.tile(np.arange(num_rel), len(item["rel_scores"]))
         for (sbj, obj), rel_pred in zip(item["pairs"][pair_ids], pred_ids[ordering]):
             if sbj not in matching or obj not in matching:
                 continue
@@ -517,7 +518,24 @@ def calc_metrics(
     pauc_gt = []
     pauc_scores = []
     for x in tqdm(outputs):
-        gt_item = dict(byid[x["img_id"]])
+        raw_img_id = x["img_id"]
+        if raw_img_id in byid:
+            gt_key = raw_img_id
+        elif str(raw_img_id) in byid:
+            gt_key = str(raw_img_id)
+        elif (
+            isinstance(raw_img_id, str)
+            and raw_img_id.isdigit()
+            and int(raw_img_id) in byid
+        ):
+            gt_key = int(raw_img_id)
+        else:
+            raise KeyError(
+                f"Prediction img_id={raw_img_id!r} cannot be found in GT. "
+                f"Prediction type={type(raw_img_id).__name__}, "
+                f"sample GT keys={list(byid.keys())[:10]}"
+            )
+        gt_item = dict(byid[gt_key])
         if seg_dir is not None:
             gt_item["pan_mask"] = load_gt_seg_mask(
                 seg_dir / gt_item["pan_seg_file_name"], gt_item["segments_info"]
@@ -530,6 +548,7 @@ def calc_metrics(
             match=match_method,
             dedup_mode=dedup_mode,
             is_ours=improved_ngR,
+            num_rel=num_rel,
         )
         gt_counts.append(g)
         for k, _h, _nh in zip(ks, h, nh):
@@ -540,7 +559,7 @@ def calc_metrics(
             pauc_gt.append(pg)
         if ps is not None:
             pauc_scores.append(ps)
-        processed.add(x["img_id"])
+        processed.add(gt_key)
 
     # don't forget about the images where no ground truth file exists (not processed by the segmentation model)
     for img_id, gt in byid.items():
