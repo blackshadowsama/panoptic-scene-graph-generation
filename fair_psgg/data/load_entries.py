@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import Literal
 import json
@@ -31,7 +32,16 @@ def load_psg_entries(anno_path, split: Literal["train", "val", "test", "all"]):
         if "relations" in img:
             if len(img["relations"]) == 0:
                 # don't allow empty relations in trainin set
-                continue
+                # FLOODPSG_FLOODHN_V1: retain zero-relation training images when enabled.
+                keep_zero_relation = (
+                    split == "train"
+                    and os.environ.get(
+                        "FLOODPSG_KEEP_ZERO_REL",
+                        "0",
+                    ) == "1"
+                )
+                if not keep_zero_relation:
+                    continue
 
             new_relations = []
             for sbj, obj, rel in img["relations"]:

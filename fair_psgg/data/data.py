@@ -7,6 +7,11 @@ from collections import defaultdict
 
 from ..utils import open_segmask
 from .rel_sample import sample_all, sample_negatives
+from .flood_hn_sampling import (
+    effective_none_ratio,
+    load_flood_neg_sampling_config,
+    sample_flood_negatives,
+)
 from .common import get_generic_loader
 from .load_entries import load_psg_entries
 
@@ -124,6 +129,12 @@ class SGDataset(Dataset):
         self.node_names = node_names
         self.rel_names = ["NONE"] + rel_names
         self.entries = entries
+        # FLOODPSG_FLOODHN_V1: environment-locked sampler state.
+        self.flood_neg_sampling = (
+            load_flood_neg_sampling_config(
+                is_train=is_train
+            )
+        )
 
         assert len(self.entries) > 0, "Empty dataset"
 
@@ -169,11 +180,24 @@ class SGDataset(Dataset):
                 rel_targets=multi_targets,
             )
         else:
-            sampled_targets = sample_negatives(
-                boxes=bboxes,
-                rel_targets=multi_targets,
-                neg_ratio=self.neg_ratio,
-            )
+            if not self.flood_neg_sampling.enabled:
+                sampled_targets = sample_negatives(
+                    boxes=bboxes,
+                    rel_targets=multi_targets,
+                    neg_ratio=self.neg_ratio,
+                )
+            else:
+                sampled_targets = (
+                    sample_flood_negatives(
+                        boxes=bboxes,
+                        rel_targets=multi_targets,
+                        neg_ratio=self.neg_ratio,
+                        image_id=entry["image_id"],
+                        config=(
+                            self.flood_neg_sampling
+                        ),
+                    )
+                )
 
         # add the explicit label
         expl_none_label = torch.zeros(
@@ -209,9 +233,22 @@ class SGDataset(Dataset):
         return count_predicates(self.entries, len(self.rel_names))
 
     def get_predicate_neg_ratio(self):
-        return get_predicate_neg_ratio(
-            self.entries, len(self.rel_names), self.neg_ratio
+        ratios = get_predicate_neg_ratio(
+            self.entries,
+            len(self.rel_names),
+            self.neg_ratio,
         )
+
+        if self.flood_neg_sampling.enabled:
+            ratios[0] = effective_none_ratio(
+                entries=self.entries,
+                neg_ratio=self.neg_ratio,
+                config=(
+                    self.flood_neg_sampling
+                ),
+            )
+
+        return ratios
 
 
 def get_rel_loader(
