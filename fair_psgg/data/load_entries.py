@@ -40,6 +40,15 @@ def load_psg_entries(anno_path, split: Literal["train", "val", "test", "all"]):
                         "0",
                     ) == "1"
                 )
+                # FLOODPSG_KEEP_ZERO_REL_VAL_V1
+                keep_zero_relation = keep_zero_relation or (
+                    split == "val"
+                    and os.environ.get(
+                        "FLOODPSG_KEEP_ZERO_REL_VAL",
+                        "0",
+                    ) == "1"
+                )
+
                 if not keep_zero_relation:
                     continue
 
