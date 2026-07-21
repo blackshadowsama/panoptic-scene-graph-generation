@@ -291,9 +291,21 @@ def calc_single(
 
         gt_count[rel] += 1
 
-    matched_ratio = len(required_gt_boxes.intersection(matched_gt_boxes)) / len(
-        required_gt_boxes
-    )
+    # FLOODPSG_ZERO_RELATION_EVAL_V1
+    # A zero-relation image has no relation-required GT endpoints.
+    # Treat endpoint coverage as vacuously complete; its zero GT
+    # relation counts do not contribute to R@K or mR@K denominators.
+    if required_gt_boxes:
+        matched_ratio = (
+            len(
+                required_gt_boxes.intersection(
+                    matched_gt_boxes
+                )
+            )
+            / len(required_gt_boxes)
+        )
+    else:
+        matched_ratio = 1.0
 
     ks_hit_counts = []
     ks_nogc_hit_counts = []
