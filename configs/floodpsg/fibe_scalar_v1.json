@@ -1,0 +1,274 @@
+{
+  "version": "FIBE_SCALAR_V1",
+  "feature_count": 21,
+  "dtype": "float32",
+  "calibration": {
+    "summary_path": "data/floodpsg/stats/dsformer_fibe_d1_v1/FIBE_CONTACT_RADII_CALIBRATION_V1.json",
+    "summary_sha256": "20e7c1bc3af316f2f9d4c6a0003579c1cc210510ab4310e70d922de3bde6420f",
+    "eligible_input_sha256": "ac1f4a8683c7238a114e0b6d89941e97a3c252aa1798d9f96d5c16cc1c324c15",
+    "calibration_rows": 182,
+    "calibration_images": 170,
+    "r1_norm": 0.00373033999173135,
+    "r2_norm": 0.012894156100886001,
+    "r1_bootstrap_95": {
+      "median": 0.00419695811905635,
+      "lower_95": 0.0034363119138658,
+      "upper_95": 0.0070410941050920006
+    },
+    "r2_bootstrap_95": {
+      "median": 0.012894156100886001,
+      "lower_95": 0.0043605288809462,
+      "upper_95": 0.022535952489813903
+    },
+    "distance_normalization": "full_image_diagonal",
+    "pixel_radius_rule": "float_radius_equals_normalized_radius_times_image_diagonal",
+    "integer_rounding": false,
+    "threshold_comparison": "euclidean_distance_less_than_or_equal_to_float_radius"
+  },
+  "pair_orientation": {
+    "hazard_categories": [
+      "water",
+      "river",
+      "mud_debris",
+      "barricade"
+    ],
+    "target_categories": [
+      "person",
+      "vehicle",
+      "road",
+      "sidewalk",
+      "ground",
+      "building",
+      "underpass_bridge",
+      "drain",
+      "manhole"
+    ],
+    "orientation_source": "canonical_category_name_only",
+    "predicate_labels_used": false,
+    "hard_negative_labels_used": false
+  },
+  "mask_processing": {
+    "mask_source": "independent_overlapping_binary_masks",
+    "panoptic_mask_fallback": false,
+    "foreground_rule": "pixel_value_greater_than_0",
+    "boundary_rule": "mask AND NOT binary_erosion",
+    "erosion_kernel": "3x3_ones",
+    "connectivity": 8,
+    "erosion_border_value": 0,
+    "distance_transform": "scipy_ndimage_distance_transform_edt",
+    "truncation_margin_px": 1
+  },
+  "lower_interaction": {
+    "reference": "independent_target_mask_bbox",
+    "lower50_start_fraction": 0.5,
+    "lower25_start_fraction": 0.75
+  },
+  "apparent_water_boundary": {
+    "supported_hazard_categories": [
+      "water",
+      "river"
+    ],
+    "target_support": "columns_containing_target_foreground",
+    "shared_support": "target_support_intersection_hazard_support",
+    "water_boundary_per_column": "topmost_hazard_foreground_pixel",
+    "target_bottom_per_column": "bottommost_target_foreground_pixel",
+    "minimum_shared_columns": 8,
+    "minimum_x_coverage": 0.1,
+    "maximum_fit_columns": 256,
+    "fit_method": "centered_least_squares_after_single_mad_outlier_rejection",
+    "invalid_numeric_policy": "set_all_four_apparent_boundary_features_to_zero"
+  },
+  "scaling": {
+    "fit_split": "train_only",
+    "robust_feature_indices": [
+      7,
+      8,
+      9,
+      17
+    ],
+    "robust_formula": "(value - train_median) / max(train_iqr, 1e-6)",
+    "robust_clip": [
+      -5.0,
+      5.0
+    ],
+    "ratio_features_remain_unscaled": true,
+    "angle_features_remain_unscaled": true,
+    "flags_remain_unscaled": true
+  },
+  "invalid_pair_policy": {
+    "all_feature_values": 0.0,
+    "fibe_pair_valid": 0.0,
+    "gate_multiplier": 0.0,
+    "residual_multiplier": 0.0
+  },
+  "features": [
+    {
+      "index": 0,
+      "name": "mask_iou",
+      "group": "overlap_soft_topology",
+      "kind": "ratio",
+      "scaling": "identity_0_1",
+      "definition": "intersection(target,hazard) / union(target,hazard)"
+    },
+    {
+      "index": 1,
+      "name": "target_overlap_fraction",
+      "group": "overlap_soft_topology",
+      "kind": "ratio",
+      "scaling": "identity_0_1",
+      "definition": "intersection(target,hazard) / area(target)"
+    },
+    {
+      "index": 2,
+      "name": "hazard_overlap_fraction",
+      "group": "overlap_soft_topology",
+      "kind": "ratio",
+      "scaling": "identity_0_1",
+      "definition": "intersection(target,hazard) / area(hazard)"
+    },
+    {
+      "index": 3,
+      "name": "target_boundary_within_r1_fraction",
+      "group": "overlap_soft_topology",
+      "kind": "ratio",
+      "scaling": "identity_0_1",
+      "definition": "fraction of target-boundary pixels with distance to hazard boundary <= r1 * image diagonal"
+    },
+    {
+      "index": 4,
+      "name": "hazard_boundary_within_r1_fraction",
+      "group": "overlap_soft_topology",
+      "kind": "ratio",
+      "scaling": "identity_0_1",
+      "definition": "fraction of hazard-boundary pixels with distance to target boundary <= r1 * image diagonal"
+    },
+    {
+      "index": 5,
+      "name": "target_boundary_within_r2_fraction",
+      "group": "overlap_soft_topology",
+      "kind": "ratio",
+      "scaling": "identity_0_1",
+      "definition": "fraction of target-boundary pixels with distance to hazard boundary <= r2 * image diagonal"
+    },
+    {
+      "index": 6,
+      "name": "hazard_boundary_within_r2_fraction",
+      "group": "overlap_soft_topology",
+      "kind": "ratio",
+      "scaling": "identity_0_1",
+      "definition": "fraction of hazard-boundary pixels with distance to target boundary <= r2 * image diagonal"
+    },
+    {
+      "index": 7,
+      "name": "minimum_boundary_distance_norm",
+      "group": "distance",
+      "kind": "distance",
+      "scaling": "robust_train_only",
+      "definition": "minimum Euclidean target-hazard boundary distance divided by image diagonal"
+    },
+    {
+      "index": 8,
+      "name": "target_to_hazard_boundary_q10_norm",
+      "group": "distance",
+      "kind": "distance",
+      "scaling": "robust_train_only",
+      "definition": "10th percentile target-boundary distance to hazard boundary divided by image diagonal"
+    },
+    {
+      "index": 9,
+      "name": "hazard_to_target_boundary_q10_norm",
+      "group": "distance",
+      "kind": "distance",
+      "scaling": "robust_train_only",
+      "definition": "10th percentile hazard-boundary distance to target boundary divided by image diagonal"
+    },
+    {
+      "index": 10,
+      "name": "target_lower50_overlap_fraction",
+      "group": "lower_interaction",
+      "kind": "ratio",
+      "scaling": "identity_0_1",
+      "definition": "hazard overlap fraction inside the lower 50 percent of the independent target-mask bounding box"
+    },
+    {
+      "index": 11,
+      "name": "target_lower25_overlap_fraction",
+      "group": "lower_interaction",
+      "kind": "ratio",
+      "scaling": "identity_0_1",
+      "definition": "hazard overlap fraction inside the lower 25 percent of the independent target-mask bounding box"
+    },
+    {
+      "index": 12,
+      "name": "target_lower50_boundary_within_r1_fraction",
+      "group": "lower_interaction",
+      "kind": "ratio",
+      "scaling": "identity_0_1",
+      "definition": "fraction of lower-50-percent target-boundary pixels whose hazard-boundary distance is <= r1"
+    },
+    {
+      "index": 13,
+      "name": "target_lower50_boundary_within_r2_fraction",
+      "group": "lower_interaction",
+      "kind": "ratio",
+      "scaling": "identity_0_1",
+      "definition": "fraction of lower-50-percent target-boundary pixels whose hazard-boundary distance is <= r2"
+    },
+    {
+      "index": 14,
+      "name": "apparent_boundary_x_coverage",
+      "group": "apparent_water_boundary",
+      "kind": "ratio",
+      "scaling": "identity_0_1",
+      "definition": "fraction of target-support columns containing an observable water or river apparent upper boundary"
+    },
+    {
+      "index": 15,
+      "name": "apparent_boundary_slope_sin",
+      "group": "apparent_water_boundary",
+      "kind": "angle",
+      "scaling": "identity_minus1_1",
+      "definition": "sine of the fitted apparent water-boundary angle"
+    },
+    {
+      "index": 16,
+      "name": "apparent_boundary_slope_cos",
+      "group": "apparent_water_boundary",
+      "kind": "angle",
+      "scaling": "identity_minus1_1",
+      "definition": "cosine of the fitted apparent water-boundary angle"
+    },
+    {
+      "index": 17,
+      "name": "target_bottom_offset_from_apparent_boundary_norm",
+      "group": "apparent_water_boundary",
+      "kind": "signed_distance",
+      "scaling": "robust_train_only",
+      "definition": "median target-bottom minus apparent water-boundary vertical coordinate divided by image diagonal"
+    },
+    {
+      "index": 18,
+      "name": "apparent_boundary_valid",
+      "group": "validity_flags",
+      "kind": "flag",
+      "scaling": "identity_binary",
+      "definition": "1 when a local apparent water or river boundary can be computed, otherwise 0"
+    },
+    {
+      "index": 19,
+      "name": "pair_truncated",
+      "group": "validity_flags",
+      "kind": "flag",
+      "scaling": "identity_binary",
+      "definition": "1 when either independent mask reaches the image border within one pixel"
+    },
+    {
+      "index": 20,
+      "name": "fibe_pair_valid",
+      "group": "validity_flags",
+      "kind": "flag",
+      "scaling": "identity_binary",
+      "definition": "1 only for a supported canonical target-hazard pair with valid independent masks"
+    }
+  ]
+}
