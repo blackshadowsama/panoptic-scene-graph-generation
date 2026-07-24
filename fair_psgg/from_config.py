@@ -85,6 +85,13 @@ def get_model(config: Config, num_node_outputs: int, num_rel_outputs: int):
         use_masks=arch_cfg.use_masks,
         bg_ratio_strategy=arch_cfg.bg_ratio_strategy,
         encode_coords=arch_cfg.encode_coords,
+        fibe_enabled=config.fibe.enabled,
+        fibe_feature_dim=config.fibe.feature_dim,
+        fibe_hidden_dim=config.fibe.hidden_dim,
+        fibe_bottleneck_dim=config.fibe.bottleneck_dim,
+        fibe_alpha_max=config.fibe.alpha_max,
+        fibe_alpha_init=config.fibe.alpha_init,
+        fibe_gate_bias_init=config.fibe.gate_bias_init,
     )
 
 

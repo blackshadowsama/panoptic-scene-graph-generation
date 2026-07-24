@@ -57,6 +57,19 @@ class ArchCfg_DaniFormer(BaseModel):
     encode_coords: bool = False
 
 
+class FIBECfg(BaseModel):
+    enabled: bool = False
+    feature_dim: int = 21
+    train_cache: Optional[str] = None
+    validation_cache: Optional[str] = None
+    test_cache: Optional[str] = None
+    hidden_dim: int = 64
+    bottleneck_dim: int = 128
+    alpha_max: float = 0.2
+    alpha_init: float = 0.05
+    gate_bias_init: float = -3.0
+
+
 class DataCfg(BaseModel):
     source: Literal["psg", "o365", "vg-ietrans", "psg-coco"] = "psg"
 
@@ -90,6 +103,7 @@ class Config(BaseModel):
         ExtractorCfg_ResNet,
     ] = Field(ExtractorCfg_FasterRCNN(), discriminator="type")
     architecture: ArchCfg_DaniFormer = ArchCfg_DaniFormer()
+    fibe: FIBECfg = FIBECfg()
 
     data: DataCfg = DataCfg()
 

@@ -8,6 +8,7 @@ from tqdm import tqdm
 from ..data import get_loader
 from ..data.split_batch import split_batch_iter
 from ..trainer import prepare_batch
+from ..data.fibe_cache import build_fibe_cache
 from ..config import Config
 from .. import from_config
 
@@ -29,11 +30,17 @@ def inference2(
     num_workers: int,
     split="val",
     apply_sigmoid=True,
+    fibe_cache_path=None,
 ):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     model_folder = Path(model_folder)
     config = Config.from_file(model_folder / "config.json")
+    fibe_cache = build_fibe_cache(
+        config.fibe,
+        split=split,
+        override_path=fibe_cache_path,
+    )
 
     loader = get_loader(
         anno_path=anno_path,
@@ -65,7 +72,11 @@ def inference2(
     )
     for batch in split_batch_iter(tqdm(loader, unit="batch"), max_relations=512):
         # get pair ids
-        model_input, sbj_target, obj_target, rel_target = prepare_batch(batch, device)
+        model_input, sbj_target, obj_target, rel_target = prepare_batch(
+            batch,
+            device,
+            fibe_cache=fibe_cache,
+        )
         sbj_out, obj_out, rel_out = model(model_input)
 
         if apply_sigmoid:

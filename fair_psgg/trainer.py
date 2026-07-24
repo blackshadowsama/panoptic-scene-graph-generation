@@ -14,6 +14,7 @@ from .config import Config
 from . import from_config
 from .utils import get_device, get_git_changes, get_git_commit
 from .loss import get_node_criterion, get_multi_rel_criterion
+from .data.fibe_cache import build_fibe_cache
 
 
 class NoTensorboard:
@@ -22,7 +23,9 @@ class NoTensorboard:
 
 
 def prepare_batch(
-    batch: dict, device: torch.device
+    batch: dict,
+    device: torch.device,
+    fibe_cache=None,
 ) -> Tuple[dict, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Takes a batch from data loader and returns the input to a model and the expected targets
     :param batch: The batch that comes directly from the data loader.
@@ -54,6 +57,17 @@ def prepare_batch(
     if "segmentation" in batch:
         model_input["segmentation"] = batch["segmentation"]
 
+    if fibe_cache is not None:
+        fibe_features, fibe_valid = fibe_cache.select_for_batch(batch)
+        model_input["fibe_features"] = fibe_features.to(
+            device=device,
+            non_blocking=True,
+        )
+        model_input["fibe_valid"] = fibe_valid.to(
+            device=device,
+            non_blocking=True,
+        )
+
     return model_input, sbj_target, obj_target, rel_target.float()
 
 
@@ -80,6 +94,14 @@ class Trainer:
         self.rels_per_batch = config.rels_per_batch
 
         self._setup_loaders(config, anno_path, img_dir, seg_dir, num_workers)
+        self.fibe_train_cache = build_fibe_cache(
+            config.fibe,
+            split="train",
+        )
+        self.fibe_val_cache = build_fibe_cache(
+            config.fibe,
+            split="val",
+        )
 
         self.model = from_config.get_model(
             config,
@@ -185,11 +207,13 @@ class Trainer:
             augmentations=from_config.get_augmentations(config, split="val"),
         )
 
-    def _common_forward(self, batch):
+    def _common_forward(self, batch, fibe_cache=None):
         rel_loss_weight, node_loss_weight = self.loss_weights
 
         model_input, sbj_target, obj_target, rel_target = prepare_batch(
-            batch, self.device
+            batch,
+            self.device,
+            fibe_cache=fibe_cache,
         )
 
         model_out = self.model(model_input)
@@ -266,7 +290,10 @@ class Trainer:
             max_relations=self.rels_per_batch,
         )
         for batch in batch_iterator:
-            fwd = self._common_forward(batch)
+            fwd = self._common_forward(
+                batch,
+                fibe_cache=self.fibe_val_cache,
+            )
 
             # node output
             all_node_targets.append(fwd["sbj_target"].cpu().clone())
@@ -357,7 +384,10 @@ class Trainer:
 
         self.optimizer.zero_grad()
         for bi, batch in enumerate(batch_iterator):
-            fwd = self._common_forward(batch)
+            fwd = self._common_forward(
+                batch,
+                fibe_cache=self.fibe_train_cache,
+            )
 
             loss = fwd["loss"] / self.grad_accumulate
             loss.backward()

@@ -166,6 +166,9 @@ class SbjObjMaskEncoder(nn.Module):
         )
 
 
+from .fibe_scalar import FIBEScalarBranch
+
+
 class DaniFormer(nn.Module):
     def __init__(
         self,
@@ -181,6 +184,13 @@ class DaniFormer(nn.Module):
         use_masks=False,
         bg_ratio_strategy="total",
         encode_coords=False,
+        fibe_enabled=False,
+        fibe_feature_dim=21,
+        fibe_hidden_dim=64,
+        fibe_bottleneck_dim=128,
+        fibe_alpha_max=0.2,
+        fibe_alpha_init=0.05,
+        fibe_gate_bias_init=-3.0,
     ):
         super().__init__()
         self.extractor = extractor
@@ -254,6 +264,19 @@ class DaniFormer(nn.Module):
         else:
             self.freq_bias = None
 
+        if fibe_enabled:
+            self.fibe_branch = FIBEScalarBranch(
+                feature_dim=fibe_feature_dim,
+                embed_dim=self.embed_dim,
+                hidden_dim=fibe_hidden_dim,
+                bottleneck_dim=fibe_bottleneck_dim,
+                alpha_max=fibe_alpha_max,
+                alpha_init=fibe_alpha_init,
+                gate_bias_init=fibe_gate_bias_init,
+            )
+        else:
+            self.fibe_branch = None
+
     def _forward_internal(
         self,
         data: dict,
@@ -263,12 +286,16 @@ class DaniFormer(nn.Module):
         sbj_ids: torch.Tensor,
         obj_ids: torch.Tensor,
         return_attention,
+        fibe_features: torch.Tensor = None,
+        fibe_valid: torch.Tensor = None,
     ):
         num_boxes = data["num_boxes"]
         box_targets = data["box_categories"]
 
         img_ids = torch.repeat_interleave(num_boxes)[sbj_ids]
         patches_per_box = patches[img_ids]
+
+        coords = data["bboxes"]
 
         if self.use_masks:
             seg = data["segmentation"]
@@ -279,7 +306,7 @@ class DaniFormer(nn.Module):
             # scale coords to feature size
             h, w = img_shape[-2:]
             fh, fw = features.shape[1:3]
-            coords = data["bboxes"]
+            coords = coords.clone()
             coords[:, 0] *= fw / w
             coords[:, 1] *= fh / h
             coords[:, 2] *= fw / w
@@ -297,7 +324,6 @@ class DaniFormer(nn.Module):
 
         # add coord token if requested
         if self.coord_embed is not None:
-            coords = data["bboxes"]
             coord_token = self.coord_embed(
                 coords[sbj_ids].to(features.device),
                 coords[obj_ids].to(features.device),
@@ -322,7 +348,20 @@ class DaniFormer(nn.Module):
 
         final_token = tokens[:, 0]
 
-        output = self.final_layers(final_token)
+        relation_token = final_token
+        if self.fibe_branch is not None:
+            if fibe_features is None or fibe_valid is None:
+                raise KeyError(
+                    "FIBE is enabled but fibe_features/fibe_valid "
+                    "are absent from the model input"
+                )
+            relation_token = self.fibe_branch(
+                relation_token=final_token,
+                fibe_features=fibe_features,
+                fibe_valid=fibe_valid,
+            )
+
+        output = self.final_layers(relation_token)
 
         if self.final_node is None:
             # this is for inference only, safe some memory and skip the node classification
@@ -348,6 +387,28 @@ class DaniFormer(nn.Module):
         sbj_ids = pair_ids[:, 0]
         obj_ids = pair_ids[:, 1]
 
+        if self.fibe_branch is not None:
+            fibe_features = data.get("fibe_features")
+            fibe_valid = data.get("fibe_valid")
+            if fibe_features is None or fibe_valid is None:
+                raise KeyError(
+                    "FIBE is enabled but the prepared batch has no "
+                    "fibe_features/fibe_valid"
+                )
+            if fibe_features.shape[0] != pair_ids.shape[0]:
+                raise ValueError(
+                    "FIBE feature count does not match pair count: "
+                    f"{fibe_features.shape[0]} vs {pair_ids.shape[0]}"
+                )
+            if fibe_valid.shape[0] != pair_ids.shape[0]:
+                raise ValueError(
+                    "FIBE valid count does not match pair count: "
+                    f"{fibe_valid.shape[0]} vs {pair_ids.shape[0]}"
+                )
+        else:
+            fibe_features = None
+            fibe_valid = None
+
         features = self.extractor(img)
         assert features.shape[1:] == self.feature_shape, features.shape
 
@@ -357,8 +418,21 @@ class DaniFormer(nn.Module):
             all_sc = []
             all_oc = []
             all_rel = []
-            for sb, ob in zip(
-                sbj_ids.split(max_relations), obj_ids.split(max_relations)
+
+            sbj_chunks = sbj_ids.split(max_relations)
+            obj_chunks = obj_ids.split(max_relations)
+            if self.fibe_branch is not None:
+                feature_chunks = fibe_features.split(max_relations)
+                valid_chunks = fibe_valid.split(max_relations)
+            else:
+                feature_chunks = (None,) * len(sbj_chunks)
+                valid_chunks = (None,) * len(sbj_chunks)
+
+            for sb, ob, fibe_chunk, valid_chunk in zip(
+                sbj_chunks,
+                obj_chunks,
+                feature_chunks,
+                valid_chunks,
             ):
                 sc, oc, rel = self._forward_internal(
                     data=data,
@@ -368,6 +442,8 @@ class DaniFormer(nn.Module):
                     sbj_ids=sb,
                     obj_ids=ob,
                     return_attention=return_attention,
+                    fibe_features=fibe_chunk,
+                    fibe_valid=valid_chunk,
                 )
                 if sc is not None:
                     all_sc.append(sc)
@@ -388,4 +464,6 @@ class DaniFormer(nn.Module):
             sbj_ids=sbj_ids,
             obj_ids=obj_ids,
             return_attention=return_attention,
+            fibe_features=fibe_features,
+            fibe_valid=fibe_valid,
         )
