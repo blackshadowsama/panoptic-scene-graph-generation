@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import Tuple
 from collections import defaultdict
+import os
+
 import torch
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
@@ -368,6 +370,19 @@ class Trainer:
         return metrics, data
 
     def train_one_epoch(self, epoch: int):
+        # FLOODPSG_DETERMINISTIC_EPOCH_CONTEXT_V2
+        #
+        # DataLoader workers are created when the iterator is
+        # constructed below. With persistent_workers disabled,
+        # every worker inherits this epoch value.
+        if os.environ.get(
+            "FLOODPSG_DETERMINISTIC_SAMPLING",
+            "0",
+        ) == "1":
+            os.environ[
+                "FLOODPSG_CURRENT_EPOCH"
+            ] = str(int(epoch))
+
         self.model.train()
 
         batch_iterator = tqdm(

@@ -1,6 +1,9 @@
 from typing import Iterable, Sequence
 from torch.utils.data import Dataset, ConcatDataset
 from pathlib import Path
+import hashlib
+import os
+
 import torch
 from PIL import Image
 from collections import defaultdict
@@ -14,6 +17,126 @@ from .flood_hn_sampling import (
 )
 from .common import get_generic_loader
 from .load_entries import load_psg_entries
+
+
+# FLOODPSG_DETERMINISTIC_PAIR_SAMPLING_V2
+def _deterministic_flood_sampling_seed(
+    image_id,
+):
+    enabled = os.environ.get(
+        "FLOODPSG_DETERMINISTIC_SAMPLING",
+        "0",
+    ) == "1"
+
+    if not enabled:
+        return None
+
+    epoch_raw = os.environ.get(
+        "FLOODPSG_CURRENT_EPOCH"
+    )
+
+    if epoch_raw is None:
+        raise RuntimeError(
+            "FLOODPSG_CURRENT_EPOCH is required when "
+            "FLOODPSG_DETERMINISTIC_SAMPLING=1."
+        )
+
+    epoch = int(epoch_raw)
+
+    if epoch < 0:
+        raise RuntimeError(
+            "FLOODPSG_CURRENT_EPOCH must be >= 0, "
+            f"got {epoch}."
+        )
+
+    base_seed = int(
+        os.environ.get(
+            "FLOODPSG_SAMPLING_SEED",
+            os.environ.get(
+                "FLOODPSG_TRAIN_SEED",
+                "3407",
+            ),
+        )
+    )
+
+    payload = (
+        f"FloodPSG-DetV2|"
+        f"{base_seed}|"
+        f"{epoch}|"
+        f"{image_id}"
+    ).encode("utf-8")
+
+    digest = hashlib.sha256(
+        payload
+    ).digest()
+
+    # Keep the seed in the signed 63-bit range accepted
+    # consistently by PyTorch generators.
+    return (
+        int.from_bytes(
+            digest[:8],
+            byteorder="little",
+            signed=False,
+        )
+        % (2**63 - 1)
+    )
+
+
+def _sample_flood_negatives_reproducibly(
+    *,
+    boxes,
+    rel_targets,
+    neg_ratio,
+    image_id,
+    config,
+):
+    sampling_seed = (
+        _deterministic_flood_sampling_seed(
+            image_id
+        )
+    )
+
+    if sampling_seed is None:
+        return sample_flood_negatives(
+            boxes=boxes,
+            rel_targets=rel_targets,
+            neg_ratio=neg_ratio,
+            image_id=image_id,
+            config=config,
+        )
+
+    if rel_targets.device.type != "cpu":
+        raise RuntimeError(
+            "Deterministic FloodHN v2 expects "
+            "CPU relation targets during dataset sampling."
+        )
+
+    local_generator = torch.Generator(
+        device="cpu"
+    )
+
+    local_generator.manual_seed(
+        sampling_seed
+    )
+
+    # Existing FloodHN code uses global torch.rand/randperm.
+    # Temporarily install a stable CPU state, then restore
+    # the worker's previous state after sampling.
+    with torch.random.fork_rng(
+        devices=[],
+        enabled=True,
+    ):
+        torch.set_rng_state(
+            local_generator.get_state()
+        )
+
+        return sample_flood_negatives(
+            boxes=boxes,
+            rel_targets=rel_targets,
+            neg_ratio=neg_ratio,
+            image_id=image_id,
+            config=config,
+        )
 
 
 def make_multilabel_target(singlelabel_target, num_classes: int):
@@ -188,7 +311,7 @@ class SGDataset(Dataset):
                 )
             else:
                 sampled_targets = (
-                    sample_flood_negatives(
+                    _sample_flood_negatives_reproducibly(
                         boxes=bboxes,
                         rel_targets=multi_targets,
                         neg_ratio=self.neg_ratio,
