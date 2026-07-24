@@ -17,6 +17,7 @@ from . import from_config
 from .utils import get_device, get_git_changes, get_git_commit
 from .loss import get_node_criterion, get_multi_rel_criterion
 from .data.fibe_cache import build_fibe_cache
+from .data.raw_batch_trace import trace_raw_train_batches
 
 
 class NoTensorboard:
@@ -385,8 +386,15 @@ class Trainer:
 
         self.model.train()
 
-        batch_iterator = tqdm(
+        # FLOODPSG_RAW_BATCH_TRACE_V2
+        raw_batch_iterator = trace_raw_train_batches(
             self.train_loader,
+            epoch=epoch,
+        )
+
+        batch_iterator = tqdm(
+            raw_batch_iterator,
+            total=len(self.train_loader),
             leave=False,
             desc="train",
             dynamic_ncols=True,
