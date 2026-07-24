@@ -30,8 +30,8 @@
   "fibe": {
     "enabled": true,
     "feature_dim": 21,
-    "train_cache": "/home/aa/datasets/FloodPSG_DSFormer_package/features/fibe_scalar_v1/train_features.pt",
-    "validation_cache": "/home/aa/datasets/FloodPSG_DSFormer_package/features/fibe_scalar_v1/validation_features.pt",
+    "train_cache": "/home/aa/datasets/FloodPSG_DSFormer_package/features/fibe_scalar_v1/train_features_metadata_v1.pt",
+    "validation_cache": "/home/aa/datasets/FloodPSG_DSFormer_package/features/fibe_scalar_v1/validation_features_metadata_v1.pt",
     "test_cache": null,
     "hidden_dim": 64,
     "bottleneck_dim": 128,
