@@ -191,6 +191,42 @@ def flatten_images(
     return output
 
 
+
+def semantic_trace_sha256(
+    epoch_data: dict[str, Any],
+) -> str:
+    """Hash only sampling-semantic raw-batch content.
+
+    The stored raw-batch trace includes run_id. C-Det and D1-Det
+    intentionally have different run IDs, so the original on-disk
+    canonical hash cannot be compared directly across runs.
+    """
+
+    digest = hashlib.sha256()
+
+    for batch in epoch_data["batches"]:
+        normalized = dict(batch)
+
+        normalized.pop(
+            "run_id",
+            None,
+        )
+
+        encoded = (
+            json.dumps(
+                normalized,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n"
+        ).encode("utf-8")
+
+        digest.update(encoded)
+
+    return digest.hexdigest()
+
+
 def image_pair_views(
     image: dict[str, Any],
 ) -> dict[str, Any]:
@@ -442,6 +478,8 @@ def main() -> None:
         "internal_budget_failures": 0,
         "duplicate_image_failures": 0,
         "model_eligible_count_mismatches": 0,
+        "model_eligibility_partition_failures": 0,
+        "semantic_trace_hash_mismatches": 0,
     }
 
     mismatch_rows = []
@@ -518,14 +556,129 @@ def main() -> None:
                     "duplicate_image_failures"
                 ] += 1
 
-            if int(
+            end_raw_images = int(
+                end["raw_image_count"]
+            )
+
+            end_model_eligible = int(
                 end[
                     "model_eligible_image_count"
                 ]
-            ) != args.expected_raw_images:
+            )
+
+            end_zero_sampled = int(
+                end[
+                    "zero_sampled_relation_images"
+                ]
+            )
+
+            # Raw DataLoader images are partitioned into:
+            #
+            # 1. images with at least one sampled relation row,
+            #    which enter split_batch_iter/model training;
+            # 2. images with no possible sampled relation row.
+            #
+            # The second group is valid for zero-relation images
+            # with zero ordered-pair capacity. It must not be
+            # treated as a C/D1 mismatch.
+            if (
+                end_model_eligible
+                + end_zero_sampled
+                != end_raw_images
+            ):
                 counters[
-                    "model_eligible_count_mismatches"
+                    "model_eligibility_partition_failures"
                 ] += 1
+
+        c_model_eligible = int(
+            c_end[
+                "model_eligible_image_count"
+            ]
+        )
+
+        d1_model_eligible = int(
+            d1_end[
+                "model_eligible_image_count"
+            ]
+        )
+
+        c_zero_sampled = int(
+            c_end[
+                "zero_sampled_relation_images"
+            ]
+        )
+
+        d1_zero_sampled = int(
+            d1_end[
+                "zero_sampled_relation_images"
+            ]
+        )
+
+        if (
+            c_model_eligible
+            != d1_model_eligible
+            or c_zero_sampled
+            != d1_zero_sampled
+        ):
+            counters[
+                "model_eligible_count_mismatches"
+            ] += 1
+
+            append_mismatch(
+                mismatch_rows,
+                epoch=epoch,
+                position=-1,
+                mismatch_type=(
+                    "model_eligibility_partition"
+                ),
+                c_value={
+                    "model_eligible": (
+                        c_model_eligible
+                    ),
+                    "zero_sampled": (
+                        c_zero_sampled
+                    ),
+                },
+                d1_value={
+                    "model_eligible": (
+                        d1_model_eligible
+                    ),
+                    "zero_sampled": (
+                        d1_zero_sampled
+                    ),
+                },
+            )
+
+        c_semantic_hash = (
+            semantic_trace_sha256(
+                c_epoch
+            )
+        )
+
+        d1_semantic_hash = (
+            semantic_trace_sha256(
+                d1_epoch
+            )
+        )
+
+        if (
+            c_semantic_hash
+            != d1_semantic_hash
+        ):
+            counters[
+                "semantic_trace_hash_mismatches"
+            ] += 1
+
+            append_mismatch(
+                mismatch_rows,
+                epoch=epoch,
+                position=-1,
+                mismatch_type=(
+                    "semantic_trace_hash"
+                ),
+                c_value=c_semantic_hash,
+                d1_value=d1_semantic_hash,
+            )
 
         c_images = flatten_images(
             c_epoch
@@ -757,23 +910,38 @@ def main() -> None:
             ),
             "c_omitted_image_ids": c_omitted,
             "d1_omitted_image_ids": d1_omitted,
-            "c_canonical_trace_sha256": (
+            "c_recorded_trace_sha256": (
                 c_end[
                     "canonical_raw_batch_sha256"
                 ]
             ),
-            "d1_canonical_trace_sha256": (
+            "d1_recorded_trace_sha256": (
                 d1_end[
                     "canonical_raw_batch_sha256"
                 ]
             ),
-            "canonical_trace_hash_equal": (
+            "recorded_trace_hash_equal": (
                 c_end[
                     "canonical_raw_batch_sha256"
                 ]
                 == d1_end[
                     "canonical_raw_batch_sha256"
                 ]
+            ),
+            "recorded_hash_note": (
+                "The recorded hash includes run_id "
+                "and is not used for cross-run "
+                "equivalence."
+            ),
+            "c_semantic_trace_sha256": (
+                c_semantic_hash
+            ),
+            "d1_semantic_trace_sha256": (
+                d1_semantic_hash
+            ),
+            "semantic_trace_hash_equal": (
+                c_semantic_hash
+                == d1_semantic_hash
             ),
             "c_file_sha256": (
                 c_epoch["file_sha256"]
