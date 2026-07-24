@@ -1,0 +1,42 @@
+{
+  "rel_weight": 0.82,
+  "node_loss_weight": 0.18,
+  "batch_size": 8,
+  "rels_per_batch": 128,
+  "lr": 3.73e-05,
+  "lr_backbone": null,
+  "lr_schedule": null,
+  "weight_decay": 0.04,
+  "neg_ratio": 1.0,
+  "augmentations": null,
+  "grad_accumulate": 1,
+  "extractor": {
+    "type": "fasterrcnn",
+    "stage": "0",
+    "backbone": "resnet50"
+  },
+  "architecture": {
+    "transformer_depth": 6,
+    "embed_dim": 384,
+    "patch_size": 8,
+    "use_semantics": true,
+    "use_masks": true,
+    "bg_ratio_strategy": "sum",
+    "encode_coords": true
+  },
+  "fibe": {
+    "enabled": true,
+    "feature_dim": 21,
+    "train_cache": "/home/aa/datasets/FloodPSG_DSFormer_package/features/fibe_scalar_v1/train_features_metadata_v1.pt",
+    "validation_cache": "/home/aa/datasets/FloodPSG_DSFormer_package/features/fibe_scalar_v1/validation_features_metadata_v1.pt",
+    "test_cache": "/home/aa/datasets/FloodPSG_DSFormer_package/features/fibe_scalar_v1/test_features_metadata_v1.pt",
+    "hidden_dim": 64,
+    "bottleneck_dim": 128,
+    "alpha_max": 0.2,
+    "alpha_init": 0.05,
+    "gate_bias_init": -3.0
+  },
+  "data": {
+    "source": "psg"
+  }
+}
