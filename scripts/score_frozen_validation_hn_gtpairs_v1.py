@@ -464,6 +464,11 @@ def main() -> None:
             "--require-all-fibe-valid requires a FIBE-enabled model"
         )
 
+    # load_psg_entries intentionally omits some validation images (for
+    # example, entries with no positive relations).  The frozen HN gate must
+    # instead use the complete authoritative validation membership encoded by
+    # annotation.test_image_ids.  We still call the project loader once to
+    # obtain its canonical node/predicate name ordering.
     loaded = from_config.get_data_entries(
         config,
         anno_path=annotation_path,
@@ -475,7 +480,51 @@ def main() -> None:
             "from_config.get_data_entries did not return "
             "(entries, node_names, rel_names)"
         )
-    validation_entries, node_names, rel_names = loaded
+    loader_validation_entries, node_names, rel_names = loaded
+
+    annotation_root = json.loads(
+        annotation_path.read_text(encoding="utf-8")
+    )
+    annotation_entries = annotation_root.get("data")
+    validation_ids_raw = annotation_root.get("test_image_ids")
+    if not isinstance(annotation_entries, list):
+        raise RuntimeError("Canonical annotation has no data list")
+    if not isinstance(validation_ids_raw, list):
+        raise RuntimeError(
+            "Canonical annotation has no test_image_ids list"
+        )
+
+    validation_ids = {
+        normalize_image_id(value)
+        for value in validation_ids_raw
+    }
+    if len(validation_ids) != len(validation_ids_raw):
+        raise RuntimeError(
+            "Canonical annotation contains duplicate test_image_ids"
+        )
+
+    annotation_by_image_id: dict[int, dict[str, Any]] = {}
+    for entry in annotation_entries:
+        image_id = normalize_image_id(entry["image_id"])
+        if image_id in annotation_by_image_id:
+            raise RuntimeError(
+                f"Duplicate canonical annotation image_id: {image_id}"
+            )
+        annotation_by_image_id[image_id] = entry
+
+    missing_validation_ids = sorted(
+        validation_ids - set(annotation_by_image_id)
+    )
+    if missing_validation_ids:
+        raise RuntimeError(
+            "Canonical test_image_ids absent from annotation data: "
+            f"{missing_validation_ids[:20]}"
+        )
+
+    validation_entries = [
+        annotation_by_image_id[image_id]
+        for image_id in sorted(validation_ids)
+    ]
 
     validation_by_global_key: dict[str, dict[str, Any]] = {}
     for entry in validation_entries:
@@ -852,6 +901,19 @@ def main() -> None:
             ),
             "selected_valid_pairs": int(total_fibe_valid),
             "selected_invalid_pairs": int(total_fibe_invalid),
+        },
+        "entry_selection": {
+            "authoritative_source": "annotation.test_image_ids",
+            "loader_validation_entries": len(
+                loader_validation_entries
+            ),
+            "authoritative_validation_entries": len(
+                validation_entries
+            ),
+            "loader_omitted_authoritative_entries": (
+                len(validation_entries)
+                - len(loader_validation_entries)
+            ),
         },
         "counts": {
             "frozen_images": frozen_images,
