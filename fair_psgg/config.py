@@ -59,15 +59,24 @@ class ArchCfg_DaniFormer(BaseModel):
 
 class FIBECfg(BaseModel):
     enabled: bool = False
+    mode: Literal[
+        "token_residual",
+        "geometry_existence_gate",
+    ] = "token_residual"
     feature_dim: int = 21
     train_cache: Optional[str] = None
     validation_cache: Optional[str] = None
     test_cache: Optional[str] = None
     hidden_dim: int = 64
     bottleneck_dim: int = 128
+
+    # D1 token-residual fields.
     alpha_max: float = 0.2
     alpha_init: float = 0.05
     gate_bias_init: float = -3.0
+
+    # D1-v2a geometry-only relation-existence field.
+    existence_delta_max: float = 4.0
 
 
 class DataCfg(BaseModel):

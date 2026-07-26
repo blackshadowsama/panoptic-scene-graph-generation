@@ -167,6 +167,7 @@ class SbjObjMaskEncoder(nn.Module):
 
 
 from .fibe_scalar import FIBEScalarBranch
+from .fibe_existence_gate import FIBEGeometryExistenceGate
 
 
 class DaniFormer(nn.Module):
@@ -185,12 +186,14 @@ class DaniFormer(nn.Module):
         bg_ratio_strategy="total",
         encode_coords=False,
         fibe_enabled=False,
+        fibe_mode="token_residual",
         fibe_feature_dim=21,
         fibe_hidden_dim=64,
         fibe_bottleneck_dim=128,
         fibe_alpha_max=0.2,
         fibe_alpha_init=0.05,
         fibe_gate_bias_init=-3.0,
+        fibe_existence_delta_max=4.0,
     ):
         super().__init__()
         self.extractor = extractor
@@ -264,18 +267,30 @@ class DaniFormer(nn.Module):
         else:
             self.freq_bias = None
 
+        self.fibe_mode = str(fibe_mode)
+        self.fibe_branch = None
+        self.fibe_existence_gate = None
+
         if fibe_enabled:
-            self.fibe_branch = FIBEScalarBranch(
-                feature_dim=fibe_feature_dim,
-                embed_dim=self.embed_dim,
-                hidden_dim=fibe_hidden_dim,
-                bottleneck_dim=fibe_bottleneck_dim,
-                alpha_max=fibe_alpha_max,
-                alpha_init=fibe_alpha_init,
-                gate_bias_init=fibe_gate_bias_init,
-            )
-        else:
-            self.fibe_branch = None
+            if self.fibe_mode == "token_residual":
+                self.fibe_branch = FIBEScalarBranch(
+                    feature_dim=fibe_feature_dim,
+                    embed_dim=self.embed_dim,
+                    hidden_dim=fibe_hidden_dim,
+                    bottleneck_dim=fibe_bottleneck_dim,
+                    alpha_max=fibe_alpha_max,
+                    alpha_init=fibe_alpha_init,
+                    gate_bias_init=fibe_gate_bias_init,
+                )
+            elif self.fibe_mode == "geometry_existence_gate":
+                self.fibe_existence_gate = FIBEGeometryExistenceGate(
+                    feature_dim=fibe_feature_dim,
+                    hidden_dim=fibe_hidden_dim,
+                    bottleneck_dim=fibe_bottleneck_dim,
+                    delta_max=fibe_existence_delta_max,
+                )
+            else:
+                raise ValueError(f"Unsupported FIBE mode: {self.fibe_mode}")
 
     def _forward_internal(
         self,
@@ -363,6 +378,18 @@ class DaniFormer(nn.Module):
 
         output = self.final_layers(relation_token)
 
+        if self.fibe_existence_gate is not None:
+            if fibe_features is None or fibe_valid is None:
+                raise KeyError(
+                    "FIBE geometry existence gate is enabled but "
+                    "fibe_features/fibe_valid are absent from the model input"
+                )
+            output = self.fibe_existence_gate(
+                base_logits=output,
+                fibe_features=fibe_features,
+                fibe_valid=fibe_valid,
+            )
+
         if self.final_node is None:
             # this is for inference only, safe some memory and skip the node classification
             sbj_cls = None
@@ -387,7 +414,12 @@ class DaniFormer(nn.Module):
         sbj_ids = pair_ids[:, 0]
         obj_ids = pair_ids[:, 1]
 
-        if self.fibe_branch is not None:
+        fibe_enabled = (
+            self.fibe_branch is not None
+            or self.fibe_existence_gate is not None
+        )
+
+        if fibe_enabled:
             fibe_features = data.get("fibe_features")
             fibe_valid = data.get("fibe_valid")
             if fibe_features is None or fibe_valid is None:
@@ -421,7 +453,7 @@ class DaniFormer(nn.Module):
 
             sbj_chunks = sbj_ids.split(max_relations)
             obj_chunks = obj_ids.split(max_relations)
-            if self.fibe_branch is not None:
+            if fibe_enabled:
                 feature_chunks = fibe_features.split(max_relations)
                 valid_chunks = fibe_valid.split(max_relations)
             else:
