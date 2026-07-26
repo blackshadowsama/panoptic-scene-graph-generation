@@ -223,13 +223,31 @@ def normalize_source(frame: pd.DataFrame, label: str) -> pd.DataFrame:
 
 
 def eligible_base(frame: pd.DataFrame) -> pd.Series:
+    """Select canonical, high-risk Water-HN rows with usable pair indices.
+
+    The V4 resolution columns record the resolution method/status vocabulary used
+    by the canonical audit; they are not normalized to the literal string
+    ``resolved``. Canonical legality and label consistency are the authoritative
+    validity checks. Numeric/integer pair indices are validated again by
+    ``dedupe_pairs`` and cache bounds are validated by ``extract_features``.
+    """
+    subject_index = pd.to_numeric(
+        frame["subject_index_v4"],
+        errors="coerce",
+    )
+
+    object_index = pd.to_numeric(
+        frame["object_index_v4"],
+        errors="coerce",
+    )
+
     return (
         frame["pair_family_v4"].isin(WATER_FAMILIES)
         & frame["canonical_pair_legal_v4"]
         & frame["canonical_label_consistent_v4"]
         & frame["is_high_risk_v4"]
-        & frame["subject_resolution_v4"].str.lower().eq("resolved")
-        & frame["object_resolution_v4"].str.lower().eq("resolved")
+        & subject_index.notna()
+        & object_index.notna()
     )
 
 
